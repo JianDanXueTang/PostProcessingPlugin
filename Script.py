@@ -1,10 +1,12 @@
-# Copyright (c) 2015 Jaime van Kessel, Ultimaker B.V.
+# Copyright (c) 2015 Jaime van Kessel
+# Copyright (c) 2017 Ultimaker B.V.
 # The PostProcessingPlugin is released under the terms of the AGPLv3 or higher.
 from UM.Logger import Logger
 from UM.Signal import Signal, signalemitter
 from UM.i18n import i18nCatalog
 
 # Setting stuff import
+from UM.Application import Application
 from UM.Settings.ContainerStack import ContainerStack
 from UM.Settings.InstanceContainer import InstanceContainer
 from UM.Settings.DefinitionContainer import DefinitionContainer
@@ -42,6 +44,7 @@ class Script:
         self._stack.addContainer(self._definition)
         self._instance = InstanceContainer(container_id="ScriptInstanceContainer")
         self._instance.setDefinition(self._definition)
+        self._instance.addMetaDataEntry("setting_version", self._definition.getMetaDataEntry("setting_version", default = 0))
         self._stack.addContainer(self._instance)
         self._stack.propertyChanged.connect(self._onPropertyChanged)
 
@@ -53,6 +56,13 @@ class Script:
     def _onPropertyChanged(self, key, property_name):
         if property_name == "value":
             self.valueChanged.emit()
+
+            # Property changed: trigger reslice
+            # To do this we use the global container stack propertyChanged.
+            # Reslicing is necessary for setting changes in this plugin, because the changes
+            # are applied only once per "fresh" gcode
+            global_container_stack = Application.getInstance().getGlobalContainerStack()
+            global_container_stack.propertyChanged.emit(key, property_name)
 
     ##  Needs to return a dict that can be used to construct a settingcategory file.
     #   See the example script for an example.
@@ -87,7 +97,7 @@ class Script:
         if not key in line or (';' in line and line.find(key) > line.find(';')):
             return default
         sub_part = line[line.find(key) + 1:]
-        m = re.search('^[0-9]+\.?[0-9]*', sub_part)
+        m = re.search('^-?[0-9]+\.?[0-9]*', sub_part)
         if m is None:
             return default
         try:
